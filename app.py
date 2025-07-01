@@ -1847,7 +1847,7 @@ def main():
                 input_processed = preprocessor.transform(input_data)
                 
                 # Make prediction
-                prediction = model.predict(input_processed)[0][0]
+                prediction = model.predict(input_processed)[0]
                 
                 # Apply adjustment from visual analysis if available
                 visual_adjustment = 0
