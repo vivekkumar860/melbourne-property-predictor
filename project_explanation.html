@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Melbourne Property Price Prediction Project</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            animation: fadeIn 2s;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            transition: transform 0.3s;
+        }
+        li:hover {
+            transform: scale(1.05);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Melbourne Property Price Prediction Project</h1>
+        <p>This project is a Streamlit application that predicts property prices in Melbourne using a neural network model built with TensorFlow.</p>
+        
+        <h2>Technologies Used</h2>
+        <ul>
+            <li><strong>Streamlit:</strong> Used for building the web application interface.</li>
+            <li><strong>Pandas & NumPy:</strong> For data manipulation and numerical operations.</li>
+            <li><strong>Scikit-learn:</strong> For machine learning algorithms and data preprocessing.</li>
+            <li><strong>TensorFlow:</strong> For building and training the neural network model.</li>
+            <li><strong>Matplotlib & Seaborn:</strong> For data visualization.</li>
+            <li><strong>Plotly:</strong> For interactive plots.</li>
+            <li><strong>Folium:</strong> For creating interactive maps.</li>
+            <li><strong>Pillow:</strong> For image processing.</li>
+            <li><strong>Requests:</strong> For making HTTP requests.</li>
+            <li><strong>Watchdog:</strong> For file system monitoring to improve Streamlit performance.</li>
+        </ul>
+        
+        <h2>Features</h2>
+        <ul>
+            <li><strong>Property Price Prediction:</strong> Utilizes a neural network model to predict property prices based on various features such as location, size, and amenities.</li>
+            <li><strong>Interactive Visualizations:</strong> Provides interactive charts and maps to visualize property data and trends.</li>
+            <li><strong>FAQ Section:</strong> Includes a comprehensive FAQ section to address common questions about the application and its features.</li>
+            <li><strong>About the Model:</strong> Detailed explanation of the model's architecture, training process, and limitations to help users understand the prediction mechanism.</li>
+        </ul>
+        
+        <h2>Installation</h2>
+        <p>To install the required dependencies, run:</p>
+        <pre>pip install -r requirements.txt</pre>
+        
+        <h2>Running the Application</h2>
+        <p>To run the application, use the following command:</p>
+        <pre>python3 -m streamlit run app.py</pre>
+        <p>Access the application at <a href="http://localhost:8501">http://localhost:8501</a>.</p>
+        
+        <h2>Deploying the Project Online</h2>
+        <p>There are several ways to deploy your Streamlit application online:</p>
+        <ul>
+            <li><strong>Streamlit Sharing:</strong> Streamlit offers a free hosting service called Streamlit Sharing. You can deploy your app by pushing your code to a GitHub repository and connecting it to Streamlit Sharing. Follow these steps:
+                <ol>
+                    <li>Push your code to a GitHub repository.</li>
+                    <li>Sign up for Streamlit Sharing and connect your GitHub account.</li>
+                    <li>Select the repository and branch to deploy.</li>
+                    <li>Streamlit will automatically deploy your app and provide a URL.</li>
+                </ol>
+            </li>
+            <li><strong>Heroku:</strong> Deploy your app on Heroku by creating a Procfile and requirements.txt file, then pushing your code to a Heroku app. Steps:
+                <ol>
+                    <li>Create a Procfile with the command to run your app: <code>web: streamlit run app.py</code>.</li>
+                    <li>Ensure your requirements.txt is up to date.</li>
+                    <li>Install the Heroku CLI and log in.</li>
+                    <li>Create a new Heroku app and push your code: <code>git push heroku master</code>.</li>
+                </ol>
+            </li>
+            <li><strong>AWS Elastic Beanstalk:</strong> Use AWS Elastic Beanstalk to deploy your application. You'll need to create a configuration file and set up an environment on AWS. Steps:
+                <ol>
+                    <li>Create a <code>.ebextensions</code> directory with a configuration file to set up the environment.</li>
+                    <li>Install the AWS CLI and configure it with your credentials.</li>
+                    <li>Create an Elastic Beanstalk environment and deploy your application.</li>
+                </ol>
+            </li>
+            <li><strong>Google Cloud Run:</strong> Deploy your app on Google Cloud Run by containerizing your application and pushing it to Google Container Registry. Steps:
+                <ol>
+                    <li>Create a Dockerfile to containerize your application.</li>
+                    <li>Build and push the Docker image to Google Container Registry.</li>
+                    <li>Deploy the container to Google Cloud Run.</li>
+                </ol>
+            </li>
+            <li><strong>Docker:</strong> Containerize your application using Docker and deploy it on any cloud platform that supports Docker containers. Steps:
+                <ol>
+                    <li>Create a Dockerfile to define your application's environment.</li>
+                    <li>Build the Docker image and push it to a container registry.</li>
+                    <li>Deploy the container on your chosen cloud platform.</li>
+                </ol>
+            </li>
+        </ul>
+        <p>Each method has its own set of steps and requirements. Choose the one that best fits your needs and follow the detailed guides provided by each platform.</p>
+    </div>
+    <script>
+        // Add any JavaScript for additional interactivity or animations here
+    </script>
+</body>
+</html> 
