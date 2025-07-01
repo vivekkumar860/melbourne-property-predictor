@@ -6,14 +6,22 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.losses import MeanSquaredError
-from tensorflow.keras.metrics import MeanAbsoluteError
-from tensorflow.keras.applications import ResNet50
-from tensorflow.keras.applications.resnet50 import preprocess_input
-from tensorflow.keras.preprocessing import image
+
+# Try to import TensorFlow, but don't fail if it's not available
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import Dense, Dropout
+    from tensorflow.keras.losses import MeanSquaredError
+    from tensorflow.keras.metrics import MeanAbsoluteError
+    from tensorflow.keras.applications import ResNet50
+    from tensorflow.keras.applications.resnet50 import preprocess_input
+    from tensorflow.keras.preprocessing import image
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    st.warning("TensorFlow not available. Image analysis features will be limited.")
+
 import pickle
 import os
 import matplotlib.pyplot as plt
@@ -30,6 +38,13 @@ import base64
 from io import BytesIO
 import requests
 import tempfile
+
+# Try to import OpenCV for alternative image processing
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
 
 # Set page configuration
 st.set_page_config(
