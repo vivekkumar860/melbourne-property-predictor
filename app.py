@@ -334,17 +334,24 @@ GOOGLE_API_KEY = 'AIzaSyDViF_T0eCkBiPz2e9fQyfK0sG8V4WkXiA'
 @st.cache_resource
 def load_resnet_model():
     """Load ResNet50 model for feature extraction"""
-    model = ResNet50(weights='imagenet', include_top=False, pooling='avg')
-    return model
+    if not TENSORFLOW_AVAILABLE:
+        st.warning("TensorFlow not available. Using basic image analysis instead.")
+        return None
+    try:
+        model = ResNet50(weights='imagenet', include_top=False, pooling='avg')
+        return model
+    except Exception as e:
+        st.error(f"Error loading ResNet50 model: {str(e)}")
+        return None
 
 # Function to extract features from property image
 def extract_visual_features(uploaded_image, model):
     """
-    Extract visual features from a property image using ResNet50
+    Extract visual features from a property image using ResNet50 or basic analysis
     
     Parameters:
     uploaded_image: Uploaded image file
-    model: Loaded ResNet50 model
+    model: Loaded ResNet50 model (or None if not available)
     
     Returns:
     np.array: Feature vector
@@ -355,19 +362,75 @@ def extract_visual_features(uploaded_image, model):
             tmp.write(uploaded_image.getvalue())
             img_path = tmp.name
         
-        # Load and preprocess the image
-        img = image.load_img(img_path, target_size=(224, 224))
-        x = image.img_to_array(img)
-        x = np.expand_dims(x, axis=0)
-        x = preprocess_input(x)
-        
-        # Extract features
-        features = model.predict(x)
+        if TENSORFLOW_AVAILABLE and model is not None:
+            # Use ResNet50 for feature extraction
+            img = image.load_img(img_path, target_size=(224, 224))
+            x = image.img_to_array(img)
+            x = np.expand_dims(x, axis=0)
+            x = preprocess_input(x)
+            features = model.predict(x)
+            result = features.flatten()
+        elif OPENCV_AVAILABLE:
+            # Use OpenCV for basic image analysis
+            img = cv2.imread(img_path)
+            img = cv2.resize(img, (224, 224))
+            
+            # Extract basic features
+            features = []
+            
+            # Color features
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            features.extend([
+                np.mean(hsv[:, :, 0]),  # Hue
+                np.mean(hsv[:, :, 1]),  # Saturation
+                np.mean(hsv[:, :, 2]),  # Value
+                np.std(hsv[:, :, 0]),   # Hue variation
+                np.std(hsv[:, :, 1]),   # Saturation variation
+                np.std(hsv[:, :, 2])    # Value variation
+            ])
+            
+            # Edge features
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray, 50, 150)
+            features.extend([
+                np.mean(edges),         # Edge density
+                np.std(edges),          # Edge variation
+                np.sum(edges > 0) / edges.size  # Edge ratio
+            ])
+            
+            # Texture features (simplified)
+            features.extend([
+                np.mean(gray),          # Average brightness
+                np.std(gray),           # Brightness variation
+                np.percentile(gray, 25), # 25th percentile
+                np.percentile(gray, 75)  # 75th percentile
+            ])
+            
+            # Pad to match expected feature size (simplified)
+            result = np.array(features + [0] * (2048 - len(features)))
+        else:
+            # Basic image analysis without external libraries
+            img = Image.open(img_path)
+            img = img.resize((224, 224))
+            img_array = np.array(img)
+            
+            # Extract basic statistical features
+            features = [
+                np.mean(img_array),     # Average pixel value
+                np.std(img_array),      # Standard deviation
+                np.percentile(img_array, 25),  # 25th percentile
+                np.percentile(img_array, 75),  # 75th percentile
+                np.max(img_array),      # Maximum pixel value
+                np.min(img_array)       # Minimum pixel value
+            ]
+            
+            # Pad to match expected feature size
+            result = np.array(features + [0] * (2048 - len(features)))
         
         # Clean up
         os.unlink(img_path)
         
-        return features.flatten()
+        return result
     except Exception as e:
         st.error(f"Error extracting visual features: {str(e)}")
         return None
@@ -595,42 +658,51 @@ def build_and_train_model(X, y):
     with open('preprocessor.pkl', 'wb') as f:
         pickle.dump(preprocessor, f)
     
-    # Build neural network
-    model = Sequential([
-        Dense(128, activation='relu', input_shape=(X_train.shape[1],)),
-        Dropout(0.2),
-        Dense(64, activation='relu'),
-        Dropout(0.2),
-        Dense(32, activation='relu'),
-        Dense(1)
-    ])
+    # Build Random Forest model instead of neural network
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.metrics import mean_absolute_error, mean_squared_error
     
-    # Compile model with proper loss and metric objects
-    model.compile(
-        optimizer='adam',
-        loss=MeanSquaredError(),
-        metrics=[MeanAbsoluteError()]
+    model = RandomForestRegressor(
+        n_estimators=100,
+        max_depth=10,
+        random_state=42,
+        n_jobs=-1
     )
     
     # Train model
-    history = model.fit(
-        X_train, y_train,
-        validation_data=(X_test, y_test),
-        epochs=100,
-        batch_size=32,
-        verbose=0
-    )
+    model.fit(X_train, y_train)
     
-    # Save model
-    model.save('price_prediction_model.keras')  # Use .keras format for compatibility
+    # Make predictions for evaluation
+    y_pred = model.predict(X_test)
+    
+    # Calculate metrics
+    mae = mean_absolute_error(y_test, y_pred)
+    mse = mean_squared_error(y_test, y_pred)
+    
+    # Create a simple history object for compatibility
+    class SimpleHistory:
+        def __init__(self, mae, mse):
+            self.history = {
+                'mean_absolute_error': [mae],
+                'val_mean_absolute_error': [mae],
+                'loss': [mse],
+                'val_loss': [mse]
+            }
+    
+    history = SimpleHistory(mae, mse)
+    
+    # Save model using pickle instead of keras format
+    with open('price_prediction_model.pkl', 'wb') as f:
+        pickle.dump(model, f)
     
     return model, preprocessor, history, X_test, y_test
 
 # Function to load model and preprocessor
 def load_model_and_preprocessor():
-    if os.path.exists('price_prediction_model.keras') and os.path.exists('preprocessor.pkl'):
+    if os.path.exists('price_prediction_model.pkl') and os.path.exists('preprocessor.pkl'):
         try:
-            model = tf.keras.models.load_model('price_prediction_model.keras')
+            with open('price_prediction_model.pkl', 'rb') as f:
+                model = pickle.load(f)
             with open('preprocessor.pkl', 'rb') as f:
                 preprocessor = pickle.load(f)
             return model, preprocessor
