@@ -574,53 +574,64 @@ def add_poi_markers_to_map(m, lat, lng, poi_types=['school', 'hospital', 'superm
 
 # Function to load and clean the dataset
 def load_and_clean_data():
-    # Load the dataset
-    df = pd.read_csv('melb_data.csv')
-    
-    # Select relevant features based on the report
-    features = ['Rooms', 'Type', 'Distance', 'Bedroom2', 'Bathroom', 'Car', 
-                'Landsize', 'BuildingArea', 'YearBuilt', 'Price', 
-                'Propertycount', 'Regionname', 'Suburb']
-    
-    # Check if columns exist and filter
-    available_features = [f for f in features if f in df.columns]
-    df = df[available_features]
-    
-    # Handle missing values
-    numeric_cols = [col for col in ['Distance', 'Bedroom2', 'Bathroom', 'Car', 'Landsize', 
-                    'BuildingArea', 'YearBuilt', 'Propertycount'] if col in df.columns]
-    
-    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
-    
-    # Categorical columns: impute with mode
-    cat_cols = [col for col in ['Type', 'Regionname', 'Suburb'] if col in df.columns]
-    for col in cat_cols:
-        df[col] = df[col].fillna(df[col].mode()[0])
-    
-    # Remove outliers (using IQR method for Price)
-    Q1 = df['Price'].quantile(0.25)
-    Q3 = df['Price'].quantile(0.75)
-    IQR = Q3 - Q1
-    df = df[(df['Price'] >= Q1 - 1.5 * IQR) & (df['Price'] <= Q3 + 1.5 * IQR)]
-    
-    # Generate random coordinates around Melbourne for map visualization if Latitude/Longitude not in dataset
-    if 'Latitude' not in df.columns or 'Longitude' not in df.columns:
-        # Melbourne CBD coordinates
-        melbourne_lat = -37.8136
-        melbourne_lon = 144.9631
+    try:
+        # Load the dataset
+        df = pd.read_csv('melb_data.csv')
         
-        # Generate random coordinates based on distance from CBD
-        np.random.seed(42)  # For reproducibility
+        # Select relevant features based on the report
+        features = ['Rooms', 'Type', 'Distance', 'Bedroom2', 'Bathroom', 'Car', 
+                    'Landsize', 'BuildingArea', 'YearBuilt', 'Price', 
+                    'Propertycount', 'Regionname', 'Suburb']
         
-        # Scale distances to approximate coordinates (very rough approximation)
-        km_per_degree_lat = 111  # Approximate km per degree of latitude
-        lat_offsets = df['Distance'] / km_per_degree_lat * np.random.uniform(-1, 1, size=len(df))
-        lon_offsets = df['Distance'] / (km_per_degree_lat * np.cos(np.radians(melbourne_lat))) * np.random.uniform(-1, 1, size=len(df))
+        # Check if columns exist and filter
+        available_features = [f for f in features if f in df.columns]
+        if len(available_features) < 5:  # Need at least some basic features
+            st.error("Dataset is missing required columns. Please check the melb_data.csv file.")
+            return None
+            
+        df = df[available_features]
         
-        df['Latitude'] = melbourne_lat + lat_offsets
-        df['Longitude'] = melbourne_lon + lon_offsets
-    
-    return df
+        # Handle missing values
+        numeric_cols = [col for col in ['Distance', 'Bedroom2', 'Bathroom', 'Car', 'Landsize', 
+                        'BuildingArea', 'YearBuilt', 'Propertycount'] if col in df.columns]
+        
+        df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+        
+        # Categorical columns: impute with mode
+        cat_cols = [col for col in ['Type', 'Regionname', 'Suburb'] if col in df.columns]
+        for col in cat_cols:
+            df[col] = df[col].fillna(df[col].mode()[0])
+        
+        # Remove outliers (using IQR method for Price)
+        Q1 = df['Price'].quantile(0.25)
+        Q3 = df['Price'].quantile(0.75)
+        IQR = Q3 - Q1
+        df = df[(df['Price'] >= Q1 - 1.5 * IQR) & (df['Price'] <= Q3 + 1.5 * IQR)]
+        
+        # Generate random coordinates around Melbourne for map visualization if Latitude/Longitude not in dataset
+        if 'Latitude' not in df.columns or 'Longitude' not in df.columns:
+            # Melbourne CBD coordinates
+            melbourne_lat = -37.8136
+            melbourne_lon = 144.9631
+            
+            # Generate random coordinates based on distance from CBD
+            np.random.seed(42)  # For reproducibility
+            
+            # Scale distances to approximate coordinates (very rough approximation)
+            km_per_degree_lat = 111  # Approximate km per degree of latitude
+            lat_offsets = df['Distance'] / km_per_degree_lat * np.random.uniform(-1, 1, size=len(df))
+            lon_offsets = df['Distance'] / (km_per_degree_lat * np.cos(np.radians(melbourne_lat))) * np.random.uniform(-1, 1, size=len(df))
+            
+            df['Latitude'] = melbourne_lat + lat_offsets
+            df['Longitude'] = melbourne_lon + lon_offsets
+        
+        return df
+    except FileNotFoundError:
+        st.error("melb_data.csv file not found. Please ensure the data file is in the same directory as the app.")
+        return None
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return None
 
 # Function to build and train the neural network
 def build_and_train_model(X, y):
@@ -699,6 +710,7 @@ def build_and_train_model(X, y):
 
 # Function to load model and preprocessor
 def load_model_and_preprocessor():
+    # Try to load the new scikit-learn model first
     if os.path.exists('price_prediction_model.pkl') and os.path.exists('preprocessor.pkl'):
         try:
             with open('price_prediction_model.pkl', 'rb') as f:
@@ -707,8 +719,15 @@ def load_model_and_preprocessor():
                 preprocessor = pickle.load(f)
             return model, preprocessor
         except Exception as e:
-            st.error(f"Error loading model: {str(e)}")
-            return None, None
+            st.error(f"Error loading scikit-learn model: {str(e)}")
+    
+    # If scikit-learn model doesn't exist, check if we have the old TensorFlow model
+    if os.path.exists('price_prediction_model.keras'):
+        st.info("Found old TensorFlow model. Retraining with scikit-learn Random Forest for better compatibility...")
+        return None, None
+    
+    # No model files found
+    st.info("No trained model found. Will train a new model.")
     return None, None
 
 # Function to display data insights
@@ -738,9 +757,11 @@ def display_insights(df):
             st.metric("Total Properties", f"{property_count:,}")
         
         with col4:
-            price_per_sqm = df['Price'] / df['BuildingArea'].replace(0, np.nan)
+            # Calculate price per sqm with proper handling of zero building areas
+            building_area_filtered = df['BuildingArea'].replace(0, np.nan)
+            price_per_sqm = df['Price'] / building_area_filtered
             avg_price_per_sqm = price_per_sqm.mean()
-            st.metric("Avg. Price per sqm", f"${avg_price_per_sqm:,.0f}")
+            st.metric("Avg. Price per sqm", f"${avg_price_per_sqm:,.0f}" if not pd.isna(avg_price_per_sqm) else "N/A")
         
         # Interactive price by property type chart
         st.subheader("Price by Property Type")
@@ -1475,9 +1496,6 @@ def plot_feature_importance(model, preprocessor, X):
     
     st.markdown('<div class="card">', unsafe_allow_html=True)
     
-    # Create a synthetic dataset to assess feature importance
-    X_processed = preprocessor.transform(X)
-    
     # Get feature names
     categorical_cols = ['Type']
     numerical_cols = ['Rooms', 'Distance', 'Bedroom2', 'Bathroom', 'Car', 
@@ -1492,25 +1510,25 @@ def plot_feature_importance(model, preprocessor, X):
         cat_features = [f"Type_{t}" for t in ['h', 't', 'u']]
         all_features = list(numerical_cols) + list(cat_features)
     
-    # Compute feature importance through a simple perturbation approach
+    # Use Random Forest's built-in feature importance
     with st.spinner("Calculating feature importance..."):
-        importance = []
-        baseline = model.predict(X_processed).flatten()
-        
-        # Create progress bar
-        progress_bar = st.progress(0)
-        
-        for i in range(X_processed.shape[1]):
-            # Create a copy and perturb one feature
-            X_perturbed = X_processed.copy()
-            X_perturbed[:, i] = np.random.permutation(X_perturbed[:, i])
+        if hasattr(model, 'feature_importances_') and model.feature_importances_ is not None:
+            # Use built-in feature importance for Random Forest
+            importance = model.feature_importances_
+        else:
+            # Fallback to perturbation method
+            X_processed = preprocessor.transform(X)
+            importance = []
+            baseline = model.predict(X_processed)
             
-            # Predict and calculate importance as the change in prediction
-            pred_perturbed = model.predict(X_perturbed).flatten()
-            importance.append(np.mean(np.abs(baseline - pred_perturbed)))
-            
-            # Update progress
-            progress_bar.progress((i + 1) / X_processed.shape[1])
+            for i in range(X_processed.shape[1]):
+                # Create a copy and perturb one feature
+                X_perturbed = X_processed.copy()
+                X_perturbed[:, i] = np.random.permutation(X_perturbed[:, i])
+                
+                # Predict and calculate importance as the change in prediction
+                pred_perturbed = model.predict(X_perturbed)
+                importance.append(np.mean(np.abs(baseline - pred_perturbed)))
         
         # Create DataFrame for visualization
         feature_importance = pd.DataFrame({
@@ -1518,9 +1536,6 @@ def plot_feature_importance(model, preprocessor, X):
             'Importance': importance
         })
         feature_importance = feature_importance.sort_values('Importance', ascending=False)
-    
-    # Clear progress bar after completion
-    progress_bar.empty()
     
     # Add human-readable feature names
     feature_importance['Display_Name'] = feature_importance['Feature'].apply(
@@ -1609,6 +1624,10 @@ def main():
     # Load and clean data
     with st.spinner("Loading property data..."):
         df = load_and_clean_data()
+        
+    if df is None:
+        st.error("Failed to load property data. Please check the data file and try again.")
+        st.stop()
     
     # Prepare features and target
     X = df.drop('Price', axis=1)
@@ -1685,8 +1704,8 @@ def main():
                 model, preprocessor, history, X_test, y_test = build_and_train_model(X, y)
                 
                 # Display training results
-                mae = history.history['mean_absolute_error'][-1]
-                val_mae = history.history['val_mean_absolute_error'][-1]
+                mae = history.history['mean_absolute_error'][0]
+                val_mae = history.history['val_mean_absolute_error'][0]
                 
                 st.success('Model successfully retrained!')
                 st.metric("Training Error (MAE)", f"${mae:,.0f}")
@@ -1704,26 +1723,17 @@ def main():
         # Property type selection with icons
         st.subheader("What type of property are you interested in?")
         
-        property_type_cols = st.columns(3)
-        with property_type_cols[0]:
-            house_selected = st.button('🏡 House', use_container_width=True, 
-                                      help="A standalone residential building on its own land")
-        with property_type_cols[1]:
-            unit_selected = st.button('🏢 Unit/Apartment', use_container_width=True,
-                                     help="A self-contained residential unit within a larger building complex")
-        with property_type_cols[2]:
-            townhouse_selected = st.button('🏘️ Townhouse', use_container_width=True,
-                                          help="A multi-level attached residential unit, often part of a row of similar houses")
+        # Define property type mapping
+        property_type_mapping = {'h': 'House', 'u': 'Unit/Apartment', 't': 'Townhouse'}
         
-        # Set property type based on selection
-        if house_selected:
-            property_type = 'h'
-        elif unit_selected:
-            property_type = 'u'
-        elif townhouse_selected:
-            property_type = 't'
-        else:
-            property_type = 'h'  # Default to house
+        # Use radio buttons instead of buttons for better UX
+        property_type = st.radio(
+            "Select Property Type",
+            options=['h', 'u', 't'],
+            format_func=lambda x: f"{get_property_icon(x)} {property_type_mapping[x]}",
+            horizontal=True,
+            key="property_type_radio"
+        )
         
         # Show which property type is selected
         property_type_display = {'h': 'House', 'u': 'Unit/Apartment', 't': 'Townhouse'}
@@ -1820,364 +1830,369 @@ def main():
             predict_button = st.button('Calculate Property Value', use_container_width=True, key="predict_button")
         
         if predict_button:
-            # Visual analysis results
-            visual_analysis = None
-            if uploaded_image:
-                with st.spinner("Analyzing property image using AI..."):
-                    visual_analysis = analyze_property_image(uploaded_image)
-            
-            # Create input dataframe
-            input_data = pd.DataFrame({
-                'Rooms': [rooms],
-                'Type': [property_type],
-                'Distance': [distance],
-                'Bedroom2': [bedroom2],
-                'Bathroom': [bathroom],
-                'Car': [car],
-                'Landsize': [landsize],
-                'BuildingArea': [building_area],
-                'YearBuilt': [year_built]
-            })
-            
-            # Show prediction process with spinner
-            with st.spinner('Analyzing property details and calculating value...'):
-                # Add a slight delay for effect
-                time.sleep(1)
+            try:
+                # Visual analysis results
+                visual_analysis = None
+                if uploaded_image:
+                    with st.spinner("Analyzing property image using AI..."):
+                        visual_analysis = analyze_property_image(uploaded_image)
                 
-                # Preprocess input
-                input_processed = preprocessor.transform(input_data)
-                
-                # Make prediction
-                prediction = model.predict(input_processed)[0]
-                
-                # Apply adjustment from visual analysis if available
-                visual_adjustment = 0
-                if visual_analysis:
-                    visual_adjustment = (visual_analysis['total_impact'] / 100) * prediction
-                    prediction += visual_adjustment
-                
-                # Calculate price range (simplified for demo)
-                lower_bound = prediction * 0.9
-                upper_bound = prediction * 1.1
-                
-                # Get price ranges in the dataset for comparison
-                min_price = df['Price'].min()
-                max_price = df['Price'].max()
-                
-                # Find similar properties
-                similar_props = df[
-                    (df['Rooms'] == rooms) &
-                    (df['Type'] == property_type) &
-                    (df['Distance'] <= distance + 5) &
-                    (df['Distance'] >= max(0, distance - 5))
-                ].sort_values(by='Price')[:5]
-            
-            # Display the prediction result in a nice box
-            prediction_placeholder.markdown(f'''
-            <div class="prediction-box animate-fade-in">
-                <h3>Predicted Property Value</h3>
-                <h1 style="color: #2563EB; font-size: 3rem;">${prediction:,.0f}</h1>
-                <p>Price Range: ${lower_bound:,.0f} - ${upper_bound:,.0f}</p>
-                <p>Based on the provided property characteristics</p>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            # Show price gauge
-            st.subheader("Price Range in Melbourne Market")
-            gauge_fig = create_price_gauge(prediction, min_price, max_price)
-            st.plotly_chart(gauge_fig, use_container_width=True)
-            
-            # Show price breakdown
-            st.subheader("Price Breakdown")
-            
-            # Calculate approximate price per square meter
-            price_per_sqm = prediction / building_area if building_area > 0 else 0
-            land_value_approx = price_per_sqm * landsize * 0.6  # Simplified approximation
-            building_value_approx = prediction - land_value_approx
-            
-            # Ensure building value is never negative
-            if building_value_approx < 0:
-                # Adjust the split to ensure both values are positive
-                land_value_percent = 0.4  # Reduced land value percentage
-                land_value_approx = prediction * land_value_percent
-                building_value_approx = prediction * (1 - land_value_percent)
-            
-            # Create columns for breakdown
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Land value pie chart
-                breakdown_data = pd.DataFrame({
-                    'Component': ['Land Value', 'Building Value'],
-                    'Value': [land_value_approx, building_value_approx]
+                # Create input dataframe
+                input_data = pd.DataFrame({
+                    'Rooms': [rooms],
+                    'Type': [property_type],
+                    'Distance': [distance],
+                    'Bedroom2': [bedroom2],
+                    'Bathroom': [bathroom],
+                    'Car': [car],
+                    'Landsize': [landsize],
+                    'BuildingArea': [building_area],
+                    'YearBuilt': [year_built]
                 })
                 
-                fig = px.pie(
-                    breakdown_data, 
-                    values='Value', 
-                    names='Component',
-                    title='Approximate Value Breakdown',
-                    color='Component',
-                    color_discrete_map={
-                        'Land Value': '#3B82F6',
-                        'Building Value': '#93C5FD'
-                    }
-                )
-                
-                fig.update_traces(textposition='inside', textinfo='percent+label')
-                # Ensure pie chart has white background
-                fig.update_layout(
-                    plot_bgcolor="white",
-                    paper_bgcolor="white",
-                    font=dict(color='#1F2937')
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                # Create a card for value metrics
-                st.markdown('<div style="background-color: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">', unsafe_allow_html=True)
-                # Value metrics
-                st.metric("Estimated Price per sqm", f"${price_per_sqm:,.0f}")
-                st.metric("Approx. Land Value", f"${land_value_approx:,.0f}")
-                st.metric("Approx. Building Value", f"${building_value_approx:,.0f}")
-                
-                # Market trend indicator (for demonstration)
-                if market_condition == "Seller's Market":
-                    trend = "↗️ Rising market favors sellers. Prices may increase."
-                elif market_condition == "Buyer's Market":
-                    trend = "↘️ Declining market favors buyers. Consider negotiating."
-                else:
-                    trend = "➡️ Balanced market conditions."
-                
-                st.markdown(f"<p style='background-color: white; padding: 8px; border-radius: 5px; margin-top: 10px;'><b>Market Trend:</b> {trend}</p>", unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Display visual analysis results if available
-            if visual_analysis:
-                st.subheader("Visual Feature Analysis")
-                
-                with st.expander("See property image analysis details", expanded=True):
-                    # Create columns for visual aspects
-                    st.markdown("<p>ResNet50 deep learning model was used to analyze the property image and extract visual features:</p>", unsafe_allow_html=True)
+                # Show prediction process with spinner
+                with st.spinner('Analyzing property details and calculating value...'):
+                    # Add a slight delay for effect
+                    time.sleep(1)
                     
-                    # List detected features
-                    detected_aspects = [aspect.replace('_', ' ').title() for aspect, detected in visual_analysis['aspects'].items() if detected]
+                    # Preprocess input
+                    input_processed = preprocessor.transform(input_data)
                     
-                    if detected_aspects:
-                        # Show detected aspects in badges
-                        aspect_html = "".join([f'<span style="background-color:#DBEAFE;color:#1E40AF;padding:4px 10px;margin:3px;border-radius:12px;display:inline-block;font-size:0.9rem">{aspect}</span>' for aspect in detected_aspects])
-                        st.markdown(f"<div style='margin:10px 0'><b>Detected Features:</b> {aspect_html}</div>", unsafe_allow_html=True)
-                        
-                        # Create table for price impacts
-                        impact_data = []
-                        for aspect, detected in visual_analysis['aspects'].items():
-                            if detected:
-                                aspect_name = aspect.replace('_', ' ').title()
-                                impact_value = visual_analysis['price_impacts'][aspect]
-                                impact_data.append({
-                                    "Feature": aspect_name,
-                                    "Price Impact": f"+{impact_value:.1f}%"
-                                })
-                        
-                        if impact_data:
-                            impact_df = pd.DataFrame(impact_data)
-                            st.dataframe(impact_df, hide_index=True, use_container_width=True)
-                        
-                        # Show visual adjustment to price
+                    # Make prediction
+                    prediction = model.predict(input_processed)[0]
+                    
+                    # Apply adjustment from visual analysis if available
+                    visual_adjustment = 0
+                    if visual_analysis:
                         visual_adjustment = (visual_analysis['total_impact'] / 100) * prediction
-                        st.metric(
-                            "Total Visual Feature Impact",
-                            f"+${visual_adjustment:,.0f}",
-                            f"+{visual_analysis['total_impact']:.1f}%"
-                        )
-                        
-                        st.markdown("""
-                        <div class='info-text'>
-                            <p>Visual features can significantly impact property value. Features like modern design, 
-                            natural light, updated kitchens, and good condition can increase a property's appeal 
-                            and therefore its market value.</p>
-                            <p>This analysis uses AI to extract these features from the property image and estimates 
-                            their impact on the property's value.</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        prediction += visual_adjustment
+                    
+                    # Calculate price range (simplified for demo)
+                    lower_bound = prediction * 0.9
+                    upper_bound = prediction * 1.1
+                    
+                    # Get price ranges in the dataset for comparison
+                    min_price = df['Price'].min()
+                    max_price = df['Price'].max()
+                    
+                    # Find similar properties
+                    similar_props = df[
+                        (df['Rooms'] == rooms) &
+                        (df['Type'] == property_type) &
+                        (df['Distance'] <= distance + 5) &
+                        (df['Distance'] >= max(0, distance - 5))
+                    ].sort_values(by='Price')[:5]
+                
+                # Display the prediction result in a nice box
+                prediction_placeholder.markdown(f'''
+                <div class="prediction-box animate-fade-in">
+                    <h3>Predicted Property Value</h3>
+                    <h1 style="color: #2563EB; font-size: 3rem;">${prediction:,.0f}</h1>
+                    <p>Price Range: ${lower_bound:,.0f} - ${upper_bound:,.0f}</p>
+                    <p>Based on the provided property characteristics</p>
+                </div>
+                ''', unsafe_allow_html=True)
+                
+                # Show price gauge
+                st.subheader("Price Range in Melbourne Market")
+                gauge_fig = create_price_gauge(prediction, min_price, max_price)
+                st.plotly_chart(gauge_fig, use_container_width=True)
+                
+                # Show price breakdown
+                st.subheader("Price Breakdown")
+                
+                # Calculate approximate price per square meter
+                price_per_sqm = prediction / building_area if building_area > 0 else 0
+                land_value_approx = price_per_sqm * landsize * 0.6  # Simplified approximation
+                building_value_approx = prediction - land_value_approx
+                
+                # Ensure building value is never negative
+                if building_value_approx < 0:
+                    # Adjust the split to ensure both values are positive
+                    land_value_percent = 0.4  # Reduced land value percentage
+                    land_value_approx = prediction * land_value_percent
+                    building_value_approx = prediction * (1 - land_value_percent)
+                
+                # Create columns for breakdown
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Land value pie chart
+                    breakdown_data = pd.DataFrame({
+                        'Component': ['Land Value', 'Building Value'],
+                        'Value': [land_value_approx, building_value_approx]
+                    })
+                    
+                    fig = px.pie(
+                        breakdown_data, 
+                        values='Value', 
+                        names='Component',
+                        title='Approximate Value Breakdown',
+                        color='Component',
+                        color_discrete_map={
+                            'Land Value': '#3B82F6',
+                            'Building Value': '#93C5FD'
+                        }
+                    )
+                    
+                    fig.update_traces(textposition='inside', textinfo='percent+label')
+                    # Ensure pie chart has white background
+                    fig.update_layout(
+                        plot_bgcolor="white",
+                        paper_bgcolor="white",
+                        font=dict(color='#1F2937')
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Create a card for value metrics
+                    st.markdown('<div style="background-color: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">', unsafe_allow_html=True)
+                    # Value metrics
+                    st.metric("Estimated Price per sqm", f"${price_per_sqm:,.0f}")
+                    st.metric("Approx. Land Value", f"${land_value_approx:,.0f}")
+                    st.metric("Approx. Building Value", f"${building_value_approx:,.0f}")
+                    
+                    # Market trend indicator (for demonstration)
+                    if market_condition == "Seller's Market":
+                        trend = "↗️ Rising market favors sellers. Prices may increase."
+                    elif market_condition == "Buyer's Market":
+                        trend = "↘️ Declining market favors buyers. Consider negotiating."
                     else:
-                        st.info("No significant visual features were detected in the uploaded image. Consider uploading a clearer image or one that better showcases the property's features.")
-            
-            # Show Points of Interest analysis if coordinates are available
-            if 'Latitude' in df.columns and 'Longitude' in df.columns:
-                # Find approximate coordinates based on distance
-                melbourne_lat = -37.8136
-                melbourne_lon = 144.9631
-                
-                # Find a similar property with coordinates
-                nearby_property = df[
-                    (df['Distance'] <= distance + 1) & 
-                    (df['Distance'] >= max(0, distance - 1))
-                ].sample(1) if not similar_props.empty else None
-                
-                if nearby_property is not None and not nearby_property.empty:
-                    prop_lat = nearby_property['Latitude'].values[0]
-                    prop_lng = nearby_property['Longitude'].values[0]
+                        trend = "➡️ Balanced market conditions."
                     
-                    st.subheader("Nearby Amenities Analysis")
+                    st.markdown(f"<p style='background-color: white; padding: 8px; border-radius: 5px; margin-top: 10px;'><b>Market Trend:</b> {trend}</p>", unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Display visual analysis results if available
+                if visual_analysis:
+                    st.subheader("Visual Feature Analysis")
                     
-                    # Create expander for POI analysis
-                    with st.expander("See analysis of nearby points of interest", expanded=True):
-                        poi_col1, poi_col2 = st.columns(2)
+                    with st.expander("See property image analysis details", expanded=True):
+                        # Create columns for visual aspects
+                        st.markdown("<p>ResNet50 deep learning model was used to analyze the property image and extract visual features:</p>", unsafe_allow_html=True)
                         
-                        with poi_col1:
-                            # POI types to analyze
-                            poi_types = ['school', 'hospital', 'supermarket', 'transit_station', 'restaurant', 'park']
-                            poi_radius = 1000  # 1km radius
-                            
-                            # Count POIs
-                            poi_counts = {}
-                            with st.spinner("Analyzing nearby amenities..."):
-                                for poi_type in poi_types:
-                                    count = get_poi_count(prop_lat, prop_lng, poi_type, poi_radius)
-                                    poi_counts[poi_type] = count
-                            
-                            # Display POI counts
-                            poi_df = pd.DataFrame({
-                                'Amenity Type': [poi.replace('_', ' ').title() for poi in poi_counts.keys()],
-                                'Count within 1km': list(poi_counts.values())
-                            })
-                            
-                            st.dataframe(
-                                poi_df,
-                                use_container_width=True,
-                                hide_index=True
-                            )
-                            
-                            # POI value impact estimation (simplified for demo)
-                            total_pois = sum(poi_counts.values())
-                            if total_pois > 15:
-                                impact = "Excellent access to amenities may increase property value by 5-10%."
-                                impact_color = "#10B981"  # Green
-                            elif total_pois > 8:
-                                impact = "Good access to amenities may increase property value by 2-5%."
-                                impact_color = "#3B82F6"  # Blue
-                            elif total_pois > 3:
-                                impact = "Average access to amenities has minimal impact on property value."
-                                impact_color = "#F59E0B"  # Yellow/Orange
-                            else:
-                                impact = "Limited access to amenities may decrease property value by 2-5%."
-                                impact_color = "#EF4444"  # Red
-                            
-                            st.markdown(f"<p style='color:{impact_color};font-weight:600;'>{impact}</p>", unsafe_allow_html=True)
+                        # List detected features
+                        detected_aspects = [aspect.replace('_', ' ').title() for aspect, detected in visual_analysis['aspects'].items() if detected]
                         
-                        with poi_col2:
-                            # Create bar chart
-                            fig = px.bar(
-                                poi_df,
-                                x='Amenity Type',
-                                y='Count within 1km',
-                                color='Amenity Type',
-                                title=f"Nearby Amenities (1km radius)"
-                            )
+                        if detected_aspects:
+                            # Show detected aspects in badges
+                            aspect_html = "".join([f'<span style="background-color:#DBEAFE;color:#1E40AF;padding:4px 10px;margin:3px;border-radius:12px;display:inline-block;font-size:0.9rem">{aspect}</span>' for aspect in detected_aspects])
+                            st.markdown(f"<div style='margin:10px 0'><b>Detected Features:</b> {aspect_html}</div>", unsafe_allow_html=True)
                             
-                            fig.update_layout(height=300)
-                            st.plotly_chart(fig, use_container_width=True)
+                            # Create table for price impacts
+                            impact_data = []
+                            for aspect, detected in visual_analysis['aspects'].items():
+                                if detected:
+                                    aspect_name = aspect.replace('_', ' ').title()
+                                    impact_value = visual_analysis['price_impacts'][aspect]
+                                    impact_data.append({
+                                        "Feature": aspect_name,
+                                        "Price Impact": f"+{impact_value:.1f}%"
+                                    })
+                            
+                            if impact_data:
+                                impact_df = pd.DataFrame(impact_data)
+                                st.dataframe(impact_df, hide_index=True, use_container_width=True)
+                            
+                            # Show visual adjustment to price
+                            visual_adjustment = (visual_analysis['total_impact'] / 100) * prediction
+                            st.metric(
+                                "Total Visual Feature Impact",
+                                f"+${visual_adjustment:,.0f}",
+                                f"+{visual_analysis['total_impact']:.1f}%"
+                            )
                             
                             st.markdown("""
                             <div class='info-text'>
-                                <p>Proximity to amenities significantly impacts property values:</p>
-                                <ul>
-                                    <li><b>Schools:</b> Properties near quality schools command 5-10% premium</li>
-                                    <li><b>Transit:</b> Properties within walking distance to transit see 3-7% higher values</li>
-                                    <li><b>Supermarkets/Shopping:</b> Convenient shopping access adds 2-5% value</li>
-                                    <li><b>Parks:</b> Green space proximity can add 3-8% to property values</li>
-                                </ul>
+                                <p>Visual features can significantly impact property value. Features like modern design, 
+                                natural light, updated kitchens, and good condition can increase a property's appeal 
+                                and therefore its market value.</p>
+                                <p>This analysis uses AI to extract these features from the property image and estimates 
+                                their impact on the property's value.</p>
                             </div>
                             """, unsafe_allow_html=True)
-            
-            # Show comparable properties if available
-            if len(similar_props) > 0:
-                st.subheader("Comparable Properties")
+                        else:
+                            st.info("No significant visual features were detected in the uploaded image. Consider uploading a clearer image or one that better showcases the property's features.")
                 
-                st.dataframe(
-                    similar_props[['Rooms', 'Type', 'Distance', 'Bathroom', 'Landsize', 'BuildingArea', 'Price']].assign(
-                        Type=similar_props['Type'].map({"h": "House", "u": "Unit/Apt", "t": "Townhouse"})
-                    ),
-                    use_container_width=True,
-                    column_config={
-                        "Price": st.column_config.NumberColumn(
-                            "Price (AUD)",
-                            format="$%d",
+                # Show Points of Interest analysis if coordinates are available
+                if 'Latitude' in df.columns and 'Longitude' in df.columns:
+                    # Find approximate coordinates based on distance
+                    melbourne_lat = -37.8136
+                    melbourne_lon = 144.9631
+                    
+                    # Find a similar property with coordinates
+                    nearby_property = df[
+                        (df['Distance'] <= distance + 1) & 
+                        (df['Distance'] >= max(0, distance - 1))
+                    ].sample(1) if not similar_props.empty else None
+                    
+                    if nearby_property is not None and not nearby_property.empty:
+                        prop_lat = nearby_property['Latitude'].values[0]
+                        prop_lng = nearby_property['Longitude'].values[0]
+                        
+                        st.subheader("Nearby Amenities Analysis")
+                        
+                        # Create expander for POI analysis
+                        with st.expander("See analysis of nearby points of interest", expanded=True):
+                            poi_col1, poi_col2 = st.columns(2)
+                            
+                            with poi_col1:
+                                # POI types to analyze
+                                poi_types = ['school', 'hospital', 'supermarket', 'transit_station', 'restaurant', 'park']
+                                poi_radius = 1000  # 1km radius
+                                
+                                # Count POIs
+                                poi_counts = {}
+                                with st.spinner("Analyzing nearby amenities..."):
+                                    for poi_type in poi_types:
+                                        count = get_poi_count(prop_lat, prop_lng, poi_type, poi_radius)
+                                        poi_counts[poi_type] = count
+                                
+                                # Display POI counts
+                                poi_df = pd.DataFrame({
+                                    'Amenity Type': [poi.replace('_', ' ').title() for poi in poi_counts.keys()],
+                                    'Count within 1km': list(poi_counts.values())
+                                })
+                                
+                                st.dataframe(
+                                    poi_df,
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+                                
+                                # POI value impact estimation (simplified for demo)
+                                total_pois = sum(poi_counts.values())
+                                if total_pois > 15:
+                                    impact = "Excellent access to amenities may increase property value by 5-10%."
+                                    impact_color = "#10B981"  # Green
+                                elif total_pois > 8:
+                                    impact = "Good access to amenities may increase property value by 2-5%."
+                                    impact_color = "#3B82F6"  # Blue
+                                elif total_pois > 3:
+                                    impact = "Average access to amenities has minimal impact on property value."
+                                    impact_color = "#F59E0B"  # Yellow/Orange
+                                else:
+                                    impact = "Limited access to amenities may decrease property value by 2-5%."
+                                    impact_color = "#EF4444"  # Red
+                                
+                                st.markdown(f"<p style='color:{impact_color};font-weight:600;'>{impact}</p>", unsafe_allow_html=True)
+                            
+                            with poi_col2:
+                                # Create bar chart
+                                fig = px.bar(
+                                    poi_df,
+                                    x='Amenity Type',
+                                    y='Count within 1km',
+                                    color='Amenity Type',
+                                    title=f"Nearby Amenities (1km radius)"
+                                )
+                                
+                                fig.update_layout(height=300)
+                                st.plotly_chart(fig, use_container_width=True)
+                                
+                                st.markdown("""
+                                <div class='info-text'>
+                                    <p>Proximity to amenities significantly impacts property values:</p>
+                                    <ul>
+                                        <li><b>Schools:</b> Properties near quality schools command 5-10% premium</li>
+                                        <li><b>Transit:</b> Properties within walking distance to transit see 3-7% higher values</li>
+                                        <li><b>Supermarkets/Shopping:</b> Convenient shopping access adds 2-5% value</li>
+                                        <li><b>Parks:</b> Green space proximity can add 3-8% to property values</li>
+                                    </ul>
+                                </div>
+                                """, unsafe_allow_html=True)
+                
+                # Show comparable properties if available
+                if len(similar_props) > 0:
+                    st.subheader("Comparable Properties")
+                    
+                    st.dataframe(
+                        similar_props[['Rooms', 'Type', 'Distance', 'Bathroom', 'Landsize', 'BuildingArea', 'Price']].assign(
+                            Type=similar_props['Type'].map({"h": "House", "u": "Unit/Apt", "t": "Townhouse"})
                         ),
-                        "Type": st.column_config.SelectboxColumn(
-                            "Property Type",
-                            help="Type of property",
-                            options=["House", "Unit/Apt", "Townhouse"],
-                            required=True,
-                        ),
-                        "Distance": st.column_config.NumberColumn(
-                            "Distance (km)",
-                            format="%.1f km",
-                        ),
-                        "Landsize": st.column_config.NumberColumn(
-                            "Land (sqm)",
-                            format="%d sqm",
-                        ),
-                        "BuildingArea": st.column_config.NumberColumn(
-                            "Building (sqm)",
-                            format="%d sqm",
-                        ),
-                    },
-                    hide_index=True
-                )
-            else:
-                st.info("No similar properties found in the dataset.")
+                        use_container_width=True,
+                        column_config={
+                            "Price": st.column_config.NumberColumn(
+                                "Price (AUD)",
+                                format="$%d",
+                            ),
+                            "Type": st.column_config.SelectboxColumn(
+                                "Property Type",
+                                help="Type of property",
+                                options=["House", "Unit/Apt", "Townhouse"],
+                                required=True,
+                            ),
+                            "Distance": st.column_config.NumberColumn(
+                                "Distance (km)",
+                                format="%.1f km",
+                            ),
+                            "Landsize": st.column_config.NumberColumn(
+                                "Land (sqm)",
+                                format="%d sqm",
+                            ),
+                            "BuildingArea": st.column_config.NumberColumn(
+                                "Building (sqm)",
+                                format="%d sqm",
+                            ),
+                        },
+                        hide_index=True
+                    )
+                else:
+                    st.info("No similar properties found in the dataset.")
+                
+                # Investment analysis (simplified)
+                st.subheader("Investment Analysis")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Rental yield calculator
+                    st.markdown("#### Potential Rental Yield")
+                    
+                    # Estimated weekly rent (very simplified calculation)
+                    est_weekly_rent = prediction * 0.001  # 0.1% of property value per week
+                    est_annual_rent = est_weekly_rent * 52
+                    rental_yield = (est_annual_rent / prediction) * 100
+                    
+                    st.metric("Estimated Weekly Rent", f"${est_weekly_rent:,.0f}")
+                    st.metric("Estimated Annual Rent", f"${est_annual_rent:,.0f}")
+                    st.metric("Gross Rental Yield", f"{rental_yield:.2f}%")
+                
+                with col2:
+                    # Capital growth projection
+                    st.markdown("#### 5-Year Growth Projection")
+                    
+                    # Very simplified capital growth projection
+                    growth_rates = {
+                        "Conservative (3%)": 0.03,
+                        "Moderate (5%)": 0.05,
+                        "Optimistic (7%)": 0.07
+                    }
+                    
+                    selected_growth = st.selectbox("Growth Scenario", options=list(growth_rates.keys()))
+                    growth_rate = growth_rates[selected_growth]
+                    
+                    # Calculate 5-year projection
+                    projection_data = pd.DataFrame({
+                        'Year': range(current_year, current_year + 6),
+                        'Value': [prediction * (1 + growth_rate) ** year for year in range(6)]
+                    })
+                    
+                    fig = px.line(
+                        projection_data,
+                        x='Year',
+                        y='Value',
+                        markers=True,
+                        title='Projected Property Value',
+                        labels={'Value': 'Projected Value (AUD)', 'Year': 'Year'}
+                    )
+                    
+                    fig.update_layout(yaxis_tickprefix='$', yaxis_tickformat=',')
+                    st.plotly_chart(fig, use_container_width=True)
             
-            # Investment analysis (simplified)
-            st.subheader("Investment Analysis")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Rental yield calculator
-                st.markdown("#### Potential Rental Yield")
-                
-                # Estimated weekly rent (very simplified calculation)
-                est_weekly_rent = prediction * 0.001  # 0.1% of property value per week
-                est_annual_rent = est_weekly_rent * 52
-                rental_yield = (est_annual_rent / prediction) * 100
-                
-                st.metric("Estimated Weekly Rent", f"${est_weekly_rent:,.0f}")
-                st.metric("Estimated Annual Rent", f"${est_annual_rent:,.0f}")
-                st.metric("Gross Rental Yield", f"{rental_yield:.2f}%")
-            
-            with col2:
-                # Capital growth projection
-                st.markdown("#### 5-Year Growth Projection")
-                
-                # Very simplified capital growth projection
-                growth_rates = {
-                    "Conservative (3%)": 0.03,
-                    "Moderate (5%)": 0.05,
-                    "Optimistic (7%)": 0.07
-                }
-                
-                selected_growth = st.selectbox("Growth Scenario", options=list(growth_rates.keys()))
-                growth_rate = growth_rates[selected_growth]
-                
-                # Calculate 5-year projection
-                projection_data = pd.DataFrame({
-                    'Year': range(current_year, current_year + 6),
-                    'Value': [prediction * (1 + growth_rate) ** year for year in range(6)]
-                })
-                
-                fig = px.line(
-                    projection_data,
-                    x='Year',
-                    y='Value',
-                    markers=True,
-                    title='Projected Property Value',
-                    labels={'Value': 'Projected Value (AUD)', 'Year': 'Year'}
-                )
-                
-                fig.update_layout(yaxis_tickprefix='$', yaxis_tickformat=',')
-                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error during prediction: {str(e)}")
+                st.info("Please try again or contact support if the issue persists.")
     
     # Tab 2: Data Insights
     with main_tabs[1]:
