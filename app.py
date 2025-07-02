@@ -437,7 +437,6 @@ def extract_visual_features(uploaded_image, model):
         return None
 
 # Function to analyze property image
-@st.cache_data
 def analyze_property_image(uploaded_image):
     """
     Analyze property image and provide insights
@@ -737,7 +736,6 @@ def load_model_and_preprocessor():
     return None, None
 
 # Function to display data insights
-@st.cache_data
 def display_insights(df):
     st.markdown('<div class="sub-header">Data Insights</div>', unsafe_allow_html=True)
     
@@ -1498,7 +1496,6 @@ def display_insights(df):
         st.markdown('</div>', unsafe_allow_html=True)
 
 # Function to create a feature importance plot
-@st.cache_data
 def plot_feature_importance(model, preprocessor, X):
     st.markdown('<div class="sub-header">Feature Importance Analysis</div>', unsafe_allow_html=True)
     
@@ -1652,77 +1649,79 @@ def main():
     
     # Create sidebar (cached to prevent recreation)
     @st.cache_data
-    def create_sidebar(df):
-        with st.sidebar:
-            st.markdown('<div class="sub-header">About</div>', unsafe_allow_html=True)
-            st.markdown('''
-            <div class="info-text">
-                This app demonstrates the power of machine learning in real estate price prediction.
-                
-                The model is trained on historical Melbourne property data and can predict prices based on 
-                property characteristics.
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            st.markdown('<div class="sub-header">Data Statistics</div>', unsafe_allow_html=True)
-            
-            # Display key metrics
-            st.metric("Total Properties", f"{len(df):,}")
-            st.metric("Price Range", f"${df['Price'].min():,.0f} - ${df['Price'].max():,.0f}")
-            st.metric("Average Price", f"${df['Price'].mean():,.0f}")
-            
-            # Display property type breakdown
-            st.markdown('<div class="sub-header">Property Types</div>', unsafe_allow_html=True)
-            type_counts = df['Type'].value_counts()
-            
-            # Create property type chart
-            type_data = pd.DataFrame({
-                'Type': ['House', 'Unit/Apt', 'Townhouse'],
-                'Count': [
-                    type_counts.get('h', 0),
-                    type_counts.get('u', 0),
-                    type_counts.get('t', 0)
-                ]
-            })
-            
-            fig = px.bar(
-                type_data, 
-                y='Count', 
-                x='Type',
-                text='Count',
-                color='Type',
-                color_discrete_map={
-                    'House': '#1E40AF',
-                    'Unit/Apt': '#3B82F6',
-                    'Townhouse': '#93C5FD'
-                }
-            )
-            
-            fig.update_layout(
-                showlegend=False,
-                height=200,
-                margin=dict(l=10, r=10, t=10, b=10)
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Model management section
-            st.markdown('<div class="sub-header">Model Management</div>', unsafe_allow_html=True)
-            
-            if st.button('Retrain Model', help="Retrain the model using the current dataset"):
-                with st.spinner('Training model... This may take a minute.'):
-                    model, preprocessor, history, X_test, y_test = build_and_train_model(X, y)
-                    
-                    # Display training results
-                    mae = history.history['mean_absolute_error'][0]
-                    val_mae = history.history['val_mean_absolute_error'][0]
-                    
-                    st.success('Model successfully retrained!')
-                    st.metric("Training Error (MAE)", f"${mae:,.0f}")
-                    st.metric("Validation Error (MAE)", f"${val_mae:,.0f}")
+    def create_sidebar_content(df):
+        # Create property type chart
+        type_counts = df['Type'].value_counts()
+        type_data = pd.DataFrame({
+            'Type': ['House', 'Unit/Apt', 'Townhouse'],
+            'Count': [
+                type_counts.get('h', 0),
+                type_counts.get('u', 0),
+                type_counts.get('t', 0)
+            ]
+        })
+        
+        fig = px.bar(
+            type_data, 
+            y='Count', 
+            x='Type',
+            text='Count',
+            color='Type',
+            color_discrete_map={
+                'House': '#1E40AF',
+                'Unit/Apt': '#3B82F6',
+                'Townhouse': '#93C5FD'
+            }
+        )
+        
+        fig.update_layout(
+            showlegend=False,
+            height=200,
+            margin=dict(l=10, r=10, t=10, b=10)
+        )
+        
+        return fig
     
     # Create the sidebar
-    create_sidebar(df)
+    with st.sidebar:
+        st.markdown('<div class="sub-header">About</div>', unsafe_allow_html=True)
+        st.markdown('''
+        <div class="info-text">
+            This app demonstrates the power of machine learning in real estate price prediction.
+            
+            The model is trained on historical Melbourne property data and can predict prices based on 
+            property characteristics.
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        st.markdown('<div class="sub-header">Data Statistics</div>', unsafe_allow_html=True)
+        
+        # Display key metrics
+        st.metric("Total Properties", f"{len(df):,}")
+        st.metric("Price Range", f"${df['Price'].min():,.0f} - ${df['Price'].max():,.0f}")
+        st.metric("Average Price", f"${df['Price'].mean():,.0f}")
+        
+        # Display property type breakdown
+        st.markdown('<div class="sub-header">Property Types</div>', unsafe_allow_html=True)
+        
+        # Get cached chart
+        type_chart = create_sidebar_content(df)
+        st.plotly_chart(type_chart, use_container_width=True)
+        
+        # Model management section (moved outside cached function)
+        st.markdown('<div class="sub-header">Model Management</div>', unsafe_allow_html=True)
+        
+        if st.button('Retrain Model', help="Retrain the model using the current dataset"):
+            with st.spinner('Training model... This may take a minute.'):
+                model, preprocessor, history, X_test, y_test = build_and_train_model(X, y)
+                
+                # Display training results
+                mae = history.history['mean_absolute_error'][0]
+                val_mae = history.history['val_mean_absolute_error'][0]
+                
+                st.success('Model successfully retrained!')
+                st.metric("Training Error (MAE)", f"${mae:,.0f}")
+                st.metric("Validation Error (MAE)", f"${val_mae:,.0f}")
     
     # Tab 1: Prediction
     with main_tabs[0]:
