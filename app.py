@@ -765,9 +765,11 @@ def display_insights(df):
         x_axis = st.selectbox("Select X-axis feature:", feature_options, index=0)
         color_by = st.selectbox("Color by:", ["Type", "Distance"] + [f for f in feature_options if f != x_axis], index=0)
         
-        fig = px.scatter(df, x=x_axis, y="Price", color=color_by, 
-                         size="Landsize", hover_data=["Rooms", "Bathroom", "BuildingArea"],
-                         opacity=0.7, title=f"Price vs {x_axis} (colored by {color_by})")
+        fig = px.scatter(
+            df, x=x_axis, y="Price", color=color_by, 
+            size="Landsize", hover_data=["Rooms", "Bathroom", "BuildingArea"],
+            opacity=0.7, title=f"Price vs {x_axis} (colored by {color_by})"
+        )
         
         fig.update_layout(height=500)
         st.plotly_chart(fig, use_container_width=True)
@@ -1033,7 +1035,6 @@ def display_insights(df):
         fig = px.scatter(
             df, x=x_feature, y=y_feature, 
             color="Type", 
-            trendline="ols",
             labels={x_feature: x_feature, y_feature: y_feature},
             title=f"Relationship between {x_feature} and {y_feature}",
             color_discrete_map={"h": "#1E40AF", "u": "#3B82F6", "t": "#93C5FD"}
